@@ -109,13 +109,41 @@ def start_profile_thread(fd, interval=0.001, filter=None, format_entry=default_f
   profile_thread.start()
   return profile_thread
 
+
+class UnixFileType(argparse.FileType):
+    """Like FileType, but uses Unix line endings, even on Windows.
+
+    flamegraph.pl cannot parse the logs generated with carriage returns, so
+    this prevents users on Windows from needing to do an extra step before
+    running flamegraph.pl.
+    """
+
+    def __call__(self, string):
+        # the special argument "-" means sys.std{in,out}
+        if string == '-':
+            if 'r' in self._mode:
+                return _sys.stdin
+            elif 'w' in self._mode:
+                return _sys.stdout
+            else:
+                msg = _('argument "-" with mode %r') % self._mode
+                raise ValueError(msg)
+
+        # all other arguments are used as file names
+        try:
+            return open(string, self._mode, self._bufsize, self._encoding,
+                        self._errors, newline='\n')
+        except OSError as e:
+            message = _("can't open '%s': %s")
+            raise ArgumentTypeError(message % (string, e))
+
 def main():
   parser = argparse.ArgumentParser(prog='python -m flamegraph', description="Sample python stack frames for use with FlameGraph")
   parser.add_argument('script_file', metavar='script.py', type=str,
       help='Script to profile')
   parser.add_argument('script_args', metavar='[arguments...]', type=str, nargs=argparse.REMAINDER,
       help='Arguments for script')
-  parser.add_argument('-o', '--output', nargs='?', type=argparse.FileType('w'), default=sys.stderr,
+  parser.add_argument('-o', '--output', nargs='?', type=UnixFileType('w'), default=sys.stderr,
       help='Save stats to file. If not specified default is to stderr')
   parser.add_argument('-i', '--interval', type=float, nargs='?', default=0.001,
       help='Interval in seconds for collection of stackframes (default: %(default)ss)')
